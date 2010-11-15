@@ -3,11 +3,11 @@
   (:import [org.apache.tools.ant Project NoBannerLogger]
            [org.apache.tools.ant.types Path FileSet ZipFileSet EnumeratedAttribute Environment$Variable]
            [org.apache.tools.ant.taskdefs Echo Javac Manifest Manifest$Attribute]
-           [java.beans Introspector]))
+           [java.beans Introspector]
+           [java.io File]))
 
-(def ^:dynamic *project*   nil)
-(def ^:dynamic *task-name* nil)
-(def ^:dynamic *verbose*   nil)
+(def ^{:dynamic true} *ant-project*   nil)
+(def ^{:dynamic true} *task-name* nil)
 
 (defmulti coerce (fn [type val] [type (class val)]))
 
@@ -42,11 +42,11 @@
   ([class]
      (let [signature (into-array Class [Project])]
        (try (.newInstance (.getConstructor class signature)
-              (into-array [*project*]))
+              (into-array [*ant-project*]))
             (catch NoSuchMethodException e
               (let [instance (.newInstance class)]
                 (try (.invoke (.getMethod class "setProject" signature)
-                       instance (into-array [*project*]))
+                       instance (into-array [*ant-project*]))
                      (catch NoSuchMethodException e))
                 instance))))))
 
@@ -57,11 +57,11 @@
 (defmacro ant [task attrs & forms]
   `(doto (make* ~task ~attrs)
      ~@forms
-     (.setTaskName (if *current-task* (name *current-task*) "null"))
+     (.setTaskName (or *task-name* "null"))
      (.execute)))
 
 (defn get-reference [ref-id]
-  (.getReference *project* ref-id))
+  (.getReference *ant-project* ref-id))
 
 (defn add-fileset [task attrs]
   (let [attrs (merge {:error-on-missing-dir false} attrs)]
@@ -83,9 +83,9 @@
     (.addConfiguredManifest task manifest)))
 
 (defn path [& paths]
-  (let [path (Path. *project*)]
+  (let [path (Path. *ant-project*)]
     (doseq [p paths]
-      (let [p (if (instance? java.io.File p) (.getPath p) p)]
+      (let [p (if (instance? File p) (.getPath p) p)]
         (if (.endsWith p "*")
           (add-fileset path {:includes "*.jar" :dir (subs p 0 (dec (count p)))})
           (.. path createPathElement (setPath p)))))
@@ -111,20 +111,20 @@
     (.addEnv task
      (make Environment$Variable {:key (name key) :value val}))))
 
-(defn init-project [root]
+(defn init-project [root verbose]
   (make Project {:basedir root}
         (.init)
         (.addBuildListener
          (make NoBannerLogger
-               {:message-output-level (if *verbose* Project/MSG_VERBOSE Project/MSG_INFO)
+               {:message-output-level (if verbose Project/MSG_VERBOSE Project/MSG_INFO)
                 :output-print-stream  System/out
                 :error-print-stream   System/err}))))
 
-(defmacro in-project [root & forms]
-  `(binding [*project* (init-project root)]
+(defmacro in-project [root verbose & forms]
+  `(binding [*ant-project* (init-project ~root ~verbose)]
      ~@forms))
 
-(defmethod coerce [java.io.File String] [_ str] (File. str))
+(defmethod coerce [File String] [_ str] (File. str))
 (defmethod coerce :default [type val]
   (if (= String type)
     (str val)
