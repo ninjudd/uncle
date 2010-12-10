@@ -4,10 +4,10 @@
            [org.apache.tools.ant.types Path FileSet ZipFileSet EnumeratedAttribute Environment$Variable]
            [org.apache.tools.ant.taskdefs Echo Javac Manifest Manifest$Attribute]
            [java.beans Introspector]
-           [java.io File]))
+           [java.io File PrintStream]))
 
-(def ^{:dynamic true} *ant-project*   nil)
-(def ^{:dynamic true} *task-name* nil)
+(def ^{:dynamic true} *ant-project* nil)
+(def ^{:dynamic true} *task-name*   nil)
 
 (defmulti coerce (fn [type val] [type (class val)]))
 
@@ -46,7 +46,7 @@
             (catch NoSuchMethodException e
               (let [instance (.newInstance class)]
                 (try (.invoke (.getMethod class "setProject" signature)
-                       instance (into-array [*ant-project*]))
+                              instance (into-array [*ant-project*]))
                      (catch NoSuchMethodException e))
                 instance))))))
 
@@ -111,17 +111,18 @@
     (.addEnv task
      (make Environment$Variable {:key (name key) :value val}))))
 
-(defn init-project [root verbose]
-  (make Project {:basedir root}
-        (.init)
-        (.addBuildListener
-         (make NoBannerLogger
-               {:message-output-level (if verbose Project/MSG_VERBOSE Project/MSG_INFO)
-                :output-print-stream  System/out
-                :error-print-stream   System/err}))))
+(defn init-project [opts]
+  (let [outs (PrintStream. (:outs opts))]
+    (make Project {:basedir (:root opts)}
+          (.init)
+          (.addBuildListener
+           (make NoBannerLogger
+                 {:message-output-level (if (:verbose opts) Project/MSG_VERBOSE Project/MSG_INFO)
+                  :output-print-stream  outs
+                  :error-print-stream   outs})))))
 
-(defmacro in-project [root verbose & forms]
-  `(binding [*ant-project* (init-project ~root ~verbose)]
+(defmacro in-project [opts & forms]
+  `(binding [*ant-project* (init-project ~opts)]
      ~@forms))
 
 (defmethod coerce [File String] [_ str] (File. str))
