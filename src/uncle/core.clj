@@ -34,10 +34,10 @@
 (def defaults
   {Javac {:includeantruntime false}})
 
-(defn make*
+(defn ant*
   ([class attrs]
      (let [attrs (merge (defaults class) attrs)]
-       (doto (make* class)
+       (doto (ant* class)
          (set-attributes! attrs))))
   ([class]
      (let [signature (into-array Class [Project])]
@@ -50,30 +50,29 @@
                      (catch NoSuchMethodException e))
                 instance))))))
 
-(defmacro make [task attrs & forms]
-  `(doto (make* ~task ~attrs)
+(defmacro ant [task attrs & forms]
+  `(doto (ant* ~task ~attrs)
      ~@forms))
 
-(defmacro ant [task attrs & forms]
-  `(doto (make* ~task ~attrs)
-     ~@forms
-     (.setTaskName (or *task-name* "null"))
-     (.execute)))
+(defn execute [task]
+  (doto task
+    (.setTaskName (or *task-name* "null"))
+    .execute))
 
 (defn get-reference [ref-id]
   (.getReference *ant-project* ref-id))
 
 (defn add-fileset [task attrs]
   (let [attrs (merge {:error-on-missing-dir false} attrs)]
-    (.addFileset task (make FileSet attrs))))
+    (.addFileset task (ant* FileSet attrs))))
 
 (defn add-zipfileset [task attrs]
   (let [attrs (merge {:error-on-missing-dir false} attrs)]
-    (.addFileset task (make ZipFileSet attrs))))
+    (.addFileset task (ant* ZipFileSet attrs))))
 
 (defn fileset-seq [fileset]
   (if (map? fileset)
-    (fileset-seq (make FileSet (merge fileset {:error-on-missing-dir false})))
+    (fileset-seq (ant* FileSet (merge fileset {:error-on-missing-dir false})))
     (map #(.getFile %) (iterator-seq (.iterator fileset)))))
 
 (defn add-manifest [task attrs]
@@ -104,22 +103,22 @@
 (defn sys [task map]
   (doseq [[key val] map]
     (.addSysproperty task
-     (make Environment$Variable {:key (name key) :value val}))))
+     (ant* Environment$Variable {:key (name key) :value val}))))
 
 (defn env [task map]
   (doseq [[key val] map]
     (.addEnv task
-     (make Environment$Variable {:key (name key) :value val}))))
+     (ant* Environment$Variable {:key (name key) :value val}))))
 
 (defn init-project [opts]
   (let [outs (PrintStream. (:outs opts))]
-    (make Project {:basedir (:root opts)}
-          (.init)
-          (.addBuildListener
-           (make NoBannerLogger
-                 {:message-output-level (if (:verbose opts) Project/MSG_VERBOSE Project/MSG_INFO)
-                  :output-print-stream  outs
-                  :error-print-stream   outs})))))
+    (ant Project {:basedir (:root opts)}
+         (.init)
+         (.addBuildListener
+          (ant* NoBannerLogger
+                {:message-output-level (if (:verbose opts) Project/MSG_VERBOSE Project/MSG_INFO)
+                 :output-print-stream  outs
+                 :error-print-stream   outs})))))
 
 (defmacro in-project [opts & forms]
   `(binding [*ant-project* (init-project ~opts)]
@@ -130,7 +129,7 @@
   (if (= String type)
     (str val)
     (if (= EnumeratedAttribute (.getSuperclass type))
-      (make type {:value val})
+      (ant* type {:value val})
       (try (cast type val)
            (catch ClassCastException e
              val)))))
