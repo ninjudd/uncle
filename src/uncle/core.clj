@@ -54,10 +54,11 @@
   `(doto (ant* ~task ~attrs)
      ~@forms))
 
-(defn execute [task]
-  (doto task
-    (.setTaskName (or *task-name* "null"))
-    .execute))
+(defn execute [& tasks]
+  (doseq [task tasks]
+    (doto task
+      (.setTaskName (or *task-name* "null"))
+      .execute)))
 
 (defn get-reference [ref-id]
   (.getReference *ant-project* ref-id))
