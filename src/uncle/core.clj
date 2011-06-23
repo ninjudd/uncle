@@ -34,10 +34,10 @@
 (def defaults
   {Javac {:includeantruntime false}})
 
-(defn ant*
+(defn ant-type*
   ([class attrs]
      (let [attrs (merge (defaults class) attrs)]
-       (doto (ant* class)
+       (doto (ant-type* class)
          (set-attributes! attrs))))
   ([class]
      (let [signature (into-array Class [Project])]
@@ -50,30 +50,35 @@
                      (catch NoSuchMethodException e))
                 instance))))))
 
-(defmacro ant [task attrs & forms]
-  `(doto (ant* ~task ~attrs)
-     ~@forms))
-
 (defn execute [& tasks]
   (doseq [task tasks]
     (doto task
       (.setTaskName (or *task-name* "null"))
       .execute)))
 
+(defmacro ant-type [task attrs & forms]
+  `(doto (ant-type* ~task ~attrs)
+     ~@forms))
+
+(defmacro ant [task attrs & forms]
+  `(doto (ant-type* ~task ~attrs)
+     ~@forms
+     execute))
+
 (defn get-reference [ref-id]
   (.getReference *ant-project* ref-id))
 
 (defn add-fileset [task attrs]
   (let [attrs (merge {:error-on-missing-dir false} attrs)]
-    (.addFileset task (ant* FileSet attrs))))
+    (.addFileset task (ant-type FileSet attrs))))
 
 (defn add-zipfileset [task attrs]
   (let [attrs (merge {:error-on-missing-dir false} attrs)]
-    (.addFileset task (ant* ZipFileSet attrs))))
+    (.addFileset task (ant-type ZipFileSet attrs))))
 
 (defn fileset-seq [fileset]
   (if (map? fileset)
-    (fileset-seq (ant* FileSet (merge fileset {:error-on-missing-dir false})))
+    (fileset-seq (ant-type FileSet (merge fileset {:error-on-missing-dir false})))
     (map #(.getFile %) (iterator-seq (.iterator fileset)))))
 
 (defn add-manifest [task attrs]
@@ -104,22 +109,22 @@
 (defn sys [task map]
   (doseq [[key val] map]
     (.addSysproperty task
-     (ant* Environment$Variable {:key (name key) :value val}))))
+     (ant-type Environment$Variable {:key (name key) :value val}))))
 
 (defn env [task map]
   (doseq [[key val] map]
     (.addEnv task
-     (ant* Environment$Variable {:key (name key) :value val}))))
+     (ant-type Environment$Variable {:key (name key) :value val}))))
 
 (defn init-project [opts]
   (let [outs (PrintStream. (:outs opts))]
-    (ant Project {:basedir (:root opts)}
-         (.init)
-         (.addBuildListener
-          (ant* NoBannerLogger
-                {:message-output-level (if (:verbose opts) Project/MSG_VERBOSE Project/MSG_INFO)
-                 :output-print-stream  outs
-                 :error-print-stream   outs})))))
+    (ant-type Project {:basedir (:root opts)}
+      (.init)
+      (.addBuildListener
+       (ant-type NoBannerLogger
+         {:message-output-level (if (:verbose opts) Project/MSG_VERBOSE Project/MSG_INFO)
+          :output-print-stream  outs
+          :error-print-stream   outs})))))
 
 (defmacro in-project [opts & forms]
   `(binding [*ant-project* (init-project ~opts)]
@@ -130,7 +135,7 @@
   (if (= String type)
     (str val)
     (if (= EnumeratedAttribute (.getSuperclass type))
-      (ant* type {:value val})
+      (ant-type type {:value val})
       (try (cast type val)
            (catch ClassCastException e
              val)))))
