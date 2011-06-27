@@ -77,9 +77,11 @@
     (.addFileset task (ant-type ZipFileSet attrs))))
 
 (defn fileset-seq [fileset]
-  (if (map? fileset)
-    (fileset-seq (ant-type FileSet (merge fileset {:error-on-missing-dir false})))
-    (map #(.getFile %) (iterator-seq (.iterator fileset)))))
+  (when fileset
+    (if (map? fileset)
+      (fileset-seq (ant-type FileSet (merge fileset {:error-on-missing-dir false})))
+      (with-meta (map #(.getFile %) (iterator-seq (.iterator fileset)))
+        {:fileset fileset}))))
 
 (defn add-manifest [task attrs]
   (let [manifest (Manifest.)]
@@ -127,15 +129,25 @@
           :error-print-stream   outs})))))
 
 (defmacro in-project [opts & forms]
-  `(binding [*ant-project* (init-project ~opts)]
+  `(binding [*ant-project* (init-project ~opts)
+             *task-name*   (:default-task ~opts)]
      ~@forms))
 
-(defmethod coerce [File String] [_ str] (File. str))
+(defmethod coerce [File String] [_ str]  (File. str))
+(defmethod coerce [Path String] [_ str]  (path str))
+(defmethod coerce [Path File]   [_ file] (path file))
+
 (defmethod coerce :default [type val]
-  (if (= String type)
-    (str val)
-    (if (= EnumeratedAttribute (.getSuperclass type))
-      (ant-type type {:value val})
-      (try (cast type val)
-           (catch ClassCastException e
-             val)))))
+  (cond (= String type)
+        (str val)
+
+        (= EnumeratedAttribute (.getSuperclass type))
+        (ant-type type {:value val})
+
+        (and (= Path type) (coll? val))
+        (apply path val)
+
+        :else
+        (try (cast type val)
+             (catch ClassCastException e
+               val))))
